@@ -1,21 +1,20 @@
 // -----------------------------------------------------------------------------
-// 2. Бэкенд на Rust (src-tauri/src/main.rs)
+// Бэкенд на Rust (src-tauri/src/main.rs)
 // -----------------------------------------------------------------------------
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{Manager, PhysicalPosition, PhysicalSize, Monitor, Window};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
-use std::sync::Mutex;
+use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use std::time::{Instant};
-use serde::{Serialize, Deserialize};
-use dashmap::DashMap; // Для потокобезопасного HashMap
-// Для tauri-plugin-store, если нужно будет взаимодействовать из Rust (обычно управляется из JS)
-// use tauri_plugin_store::{StoreBuilder, StoreCollection, with_store};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use std::time::Instant;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
+use tauri::{Manager, Monitor, PhysicalPosition, PhysicalSize, Window}; // Для потокобезопасного HashMap
+                                                                       // Для tauri-plugin-store, если нужно будет взаимодействовать из Rust (обычно управляется из JS)
+                                                                       // use tauri_plugin_store::{StoreBuilder, StoreCollection, with_store};
 use image;
-
+use uuid::Uuid;
 
 // --- Структуры данных для задач ---
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -46,25 +45,53 @@ async fn initialize_window_state(window: tauri::WebviewWindow) -> Result<(), Str
     Ok(())
 }
 
-async fn set_window_bottom_right(window: &tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
+async fn set_window_bottom_right(
+    window: &tauri::WebviewWindow,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
     let monitor: Option<Monitor> = window.current_monitor().map_err(|e| e.to_string())?;
     if let Some(monitor) = monitor {
         let monitor_size = monitor.size();
+        let monitor_position = monitor.position();
         let scale_factor = monitor.scale_factor();
 
         let new_physical_size = PhysicalSize::new(width * scale_factor, height * scale_factor);
-        let new_x = monitor_size.width as f64 - (width * scale_factor) - (SCREEN_PADDING * scale_factor);
-        let new_y = monitor_size.height as f64 - (height * scale_factor) - (SCREEN_PADDING * scale_factor);
+
+        // Исправленный расчет позиции окна
+        let new_x = monitor_position.x as f64 + monitor_size.width as f64
+            - (width + SCREEN_PADDING) * scale_factor;
+        let new_y = monitor_position.y as f64 + monitor_size.height as f64
+            - (height + SCREEN_PADDING) * scale_factor;
+
         let new_physical_position = PhysicalPosition::new(new_x, new_y);
 
-        window.set_size(new_physical_size).map_err(|e| e.to_string())?;
-        window.set_position(new_physical_position).map_err(|e| e.to_string())?;
+        window
+            .set_size(new_physical_size)
+            .map_err(|e| format!("Failed to set size: {}", e))?;
+        // Небольшая задержка
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        window
+            .set_position(new_physical_position)
+            .map_err(|e| format!("Failed to set position: {}", e))?;
+
+        // Вывод значений в консоль для отладки
+        println!(
+            "Monitor: name={:?}, size={:?}, position={:?}, scale_factor={}",
+            monitor.name(),
+            monitor_size,
+            monitor_position,
+            scale_factor
+        );
+        println!(
+            "Calculated: new_physical_size={:?}, new_physical_position={:?}",
+            new_physical_size, new_physical_position
+        );
     } else {
         return Err("Не удалось получить информацию о текущем мониторе.".into());
     }
     Ok(())
 }
-
 
 #[tauri::command]
 async fn toggle_expansion(window: tauri::WebviewWindow, expanded: bool) -> Result<(), String> {
@@ -88,16 +115,25 @@ fn stop_timer_internal() -> Result<Option<Task>, String> {
         if let Some(mut task_entry) = TASKS_DB.get_mut(&task_id_val_cloned) {
             task_entry.time_spent_ms += elapsed_ms;
             updated_task = Some(task_entry.clone());
-            println!("Задача {} обновлена в TASKS_DB, добавлено {} мс. Всего: {} мс", task_id_val_cloned, elapsed_ms, task_entry.time_spent_ms);
+            println!(
+                "Задача {} обновлена в TASKS_DB, добавлено {} мс. Всего: {} мс",
+                task_id_val_cloned, elapsed_ms, task_entry.time_spent_ms
+            );
         } else {
             // Этого не должно произойти, если логика корректна
-            eprintln!("Ошибка: Активная задача {} не найдена в TASKS_DB при остановке таймера.", task_id_val_cloned);
+            eprintln!(
+                "Ошибка: Активная задача {} не найдена в TASKS_DB при остановке таймера.",
+                task_id_val_cloned
+            );
             updated_task = None;
         }
-        
+
         *active_task_guard = None;
         *timer_start_guard = None;
-        println!("Таймер остановлен для задачи (внутренне): {}", task_id_val_cloned);
+        println!(
+            "Таймер остановлен для задачи (внутренне): {}",
+            task_id_val_cloned
+        );
         Ok(updated_task)
     } else {
         Ok(None) // Таймер не был активен
@@ -118,17 +154,18 @@ fn start_timer(task_to_start: Task) -> Result<Task, String> {
 
     *active_task_guard = Some(task_to_start.id.clone());
     *timer_start_guard = Some(Instant::now());
-    println!("Таймер запущен для задачи: {} (из TASKS_DB)", task_to_start.id);
+    println!(
+        "Таймер запущен для задачи: {} (из TASKS_DB)",
+        task_to_start.id
+    );
     Ok(task_to_start) // Возвращаем задачу, для которой запущен таймер
 }
-
 
 #[tauri::command]
 fn pause_timer() -> Result<Option<Task>, String> {
     println!("Команда pause_timer вызвана.");
     stop_timer_internal() // Останавливаем и возвращаем обновленную задачу
 }
-
 
 #[tauri::command]
 fn get_current_task_time() -> Result<Option<(String, u64)>, String> {
@@ -139,22 +176,30 @@ fn get_current_task_time() -> Result<Option<(String, u64)>, String> {
         // Таймер активен, вычисляем текущее время
         if let Some(task_from_db) = TASKS_DB.get(task_id) {
             let current_segment_elapsed = start_time.elapsed().as_millis() as u64;
-            Ok(Some((task_id.clone(), task_from_db.time_spent_ms + current_segment_elapsed)))
+            Ok(Some((
+                task_id.clone(),
+                task_from_db.time_spent_ms + current_segment_elapsed,
+            )))
         } else {
             // Не должно случиться, если задача была корректно добавлена в TASKS_DB при start_timer
-            eprintln!("Ошибка: Активная задача {} не найдена в TASKS_DB при get_current_task_time.", task_id);
+            eprintln!(
+                "Ошибка: Активная задача {} не найдена в TASKS_DB при get_current_task_time.",
+                task_id
+            );
             Ok(None)
         }
     } else if let Some(task_id) = &*active_task_guard {
         // Таймер не запущен (на паузе), но задача выбрана. Берем время из TASKS_DB.
-         if let Some(task_from_db) = TASKS_DB.get(task_id) {
+        if let Some(task_from_db) = TASKS_DB.get(task_id) {
             Ok(Some((task_id.clone(), task_from_db.time_spent_ms)))
         } else {
-            eprintln!("Ошибка: Выбранная (но на паузе) задача {} не найдена в TASKS_DB.", task_id);
+            eprintln!(
+                "Ошибка: Выбранная (но на паузе) задача {} не найдена в TASKS_DB.",
+                task_id
+            );
             Ok(None)
         }
-    }
-    else {
+    } else {
         Ok(None) // Нет активной или выбранной задачи
     }
 }
@@ -217,18 +262,26 @@ fn main() {
 
             let app_handle = app.handle().clone();
 
-            let show_app_item = MenuItem::with_id(&app_handle, "show_app", "Открыть", true, None::<String>).unwrap();
-            let quit_app_item = MenuItem::with_id(&app_handle, "quit_app", "Выход", true, None::<String>).unwrap();
-            
-            let tray_menu = Menu::with_items(&app_handle, &[
-                &show_app_item,
-                &PredefinedMenuItem::separator(&app_handle).unwrap(),
-                &quit_app_item,
-            ]).unwrap();
+            let show_app_item =
+                MenuItem::with_id(&app_handle, "show_app", "Открыть", true, None::<String>)
+                    .unwrap();
+            let quit_app_item =
+                MenuItem::with_id(&app_handle, "quit_app", "Выход", true, None::<String>).unwrap();
+
+            let tray_menu = Menu::with_items(
+                &app_handle,
+                &[
+                    &show_app_item,
+                    &PredefinedMenuItem::separator(&app_handle).unwrap(),
+                    &quit_app_item,
+                ],
+            )
+            .unwrap();
 
             let icon_bytes = include_bytes!("../icons/icon.ico").to_vec();
-            let decoded_image = image::load_from_memory_with_format(&icon_bytes, image::ImageFormat::Ico)
-                .expect("Failed to decode ICO from memory");
+            let decoded_image =
+                image::load_from_memory_with_format(&icon_bytes, image::ImageFormat::Ico)
+                    .expect("Failed to decode ICO from memory");
             let rgba_image = decoded_image.to_rgba8();
             let (width, height) = rgba_image.dimensions();
             let raw_rgba_vec = rgba_image.into_raw(); // Get Vec<u8>
@@ -247,7 +300,21 @@ fn main() {
                         "show_app" => {
                             if let Some(window) = app_h.get_webview_window("main") {
                                 window.show().expect("Failed to show window");
+
+                                // === ДОБАВИТЬ ЭТО ===
+                                if let Err(e) = window.set_always_on_top(true) {
+                                    eprintln!("Не удалось установить always_on_top при восстановлении (меню): {}", e);
+                                }
+                                // ====================
+
                                 window.set_focus().expect("Failed to focus window");
+
+                                let window_clone_for_pos = window.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    if let Err(e) = set_window_bottom_right(&window_clone_for_pos, COLLAPSED_WIDTH, COLLAPSED_HEIGHT).await {
+                                        eprintln!("Ошибка позиционирования/AoT окна из трея (меню): {}", e);
+                                    }
+                                });
                             }
                         }
                         "quit_app" => {
@@ -256,23 +323,45 @@ fn main() {
                         _ => {}
                     }
                 })
+
                 .on_tray_icon_event(move |tray_handler, event| {
-                    let app_h = tray_handler.app_handle(); 
-                    match event { 
+                    let app_h = tray_handler.app_handle();
+                    match event {
                         TrayIconEvent::Click { button, .. } if button == MouseButton::Left => {
                             if let Some(window) = app_h.get_webview_window("main") {
-                                if !window.is_visible().unwrap_or(false) {
+                                let is_visible = window.is_visible().unwrap_or(false);
+                                if !is_visible {
                                     window.show().expect("Failed to show window");
                                 }
                                 window.set_focus().expect("Failed to focus window");
+
+                                // Если окно было невидимо и мы его только что показали, ИЛИ
+                                // если оно уже было видимо, но мы хотим убедиться, что оно в правильном месте.
+                                // Для простоты, будем всегда перепозиционировать при клике, если оно становится активным.
+                                // (Можно добавить логику, чтобы делать это только если !is_visible)
+                                let window_clone_for_pos = window.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    if let Err(e) = set_window_bottom_right(
+                                        &window_clone_for_pos,
+                                        COLLAPSED_WIDTH,
+                                        COLLAPSED_HEIGHT,
+                                    )
+                                    .await
+                                    {
+                                        eprintln!(
+                                            "Ошибка позиционирования окна из трея (клик): {}",
+                                            e
+                                        );
+                                    }
+                                });
                             }
                         }
-                        _ => {} 
+                        _ => {}
                     }
                 })
                 .build(app.handle())
                 .expect("Failed to build tray icon");
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
