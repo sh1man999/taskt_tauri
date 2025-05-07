@@ -1,0 +1,436 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: transparent; /* Важно для окон без рамок, если нужен эффект "парения" */
+  overflow: hidden; /* Предотвращает появление полос прокрутки на body */
+  background: transparent !important; /* This is fine, but !important can be a code smell. Semicolon is present. */
+}
+
+.app-container {
+  background: rgba(40, 44, 52, 0.6); /* 0.6 — это 60% непрозрачности */
+  color: white;
+  overflow: hidden; /* Важно, чтобы контент не вылезал при изменении размера */
+  border-radius: 8px; /* Скругленные углы */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); /* Тень для эффекта "парения" */
+  display: flex;
+  flex-direction: column;
+  user-select: none; /* Запрет выделения текста */
+}
+
+/* --- Стили для свернутого режима --- */
+.widget-view {
+  width: auto;
+  height: auto;
+  padding: 10px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  cursor: grab;
+  position: relative; /* Для позиционирования дочерних абсолютных элементов */
+}
+
+.widget-view .control-button {
+  padding: 8px 15px;
+  font-size: 1em;
+  background-color: #61dafb; /* Яркий акцентный цвет */
+  color: #282c34;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: background-color 0.2s ease;
+}
+.widget-view .control-button:disabled {
+    background-color: #4a525a;
+    cursor: not-allowed;
+}
+
+
+.widget-view .control-button:hover:not(:disabled) {
+  background-color: #52c5e8;
+}
+
+.widget-view .time-display { /* This rule is overridden later by a more specific .time-display */
+  font-size: 1.8em;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.widget-view .task-name-display { /* This rule is overridden later by a more specific .task-name-display */
+  font-size: 0.8em;
+  color: #aaa;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
+}
+
+.task-name-display {
+  font-size: 1em;
+  color: #fff;
+  text-align: center;
+  font-weight: 500;
+  min-height: 1.2em;
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-word;
+  margin-bottom: 8px;
+}
+
+.current-task-title {
+  font-size: 1.1em;
+  font-weight: bold;
+  color: #0ff;
+  text-shadow:
+    0 0 2px #0ff,
+    0 0 6px #0ff,
+    0 1px 2px #2228;
+  letter-spacing: 0.5px;
+  filter: brightness(1.1);
+  transition: color 0.2s, text-shadow 0.2s;
+}
+
+.current-task-title.active {
+  color: #ff00cc;
+  text-shadow:
+    0 0 2px #ff00cc,
+    0 0 6px #ff00cc,
+    0 1px 2px #2228;
+  filter: brightness(1.1);
+}
+
+.widget-controls-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.control-button.round {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  font-size: 1.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(97,218,251,0.15);
+  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+  border: none;
+  outline: none;
+  background: #61dafb;
+  color: #282c34;
+  position: relative;
+  margin-bottom: 0;
+}
+
+.time-display {
+  font-family: 'Share Tech Mono', 'Fira Mono', 'Consolas', monospace;
+  font-size: 2em;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: #0ff;
+  text-align: right;
+  flex: 1;
+  padding-right: 8px;
+  text-shadow:
+    0 0 2px #0ff,
+    0 0 8px #0ff,
+    0 0 16px #0ff44;
+  filter: brightness(1.2);
+  transition: color 0.2s, text-shadow 0.2s;
+  user-select: none;
+}
+
+.control-button.round.play {
+  background: linear-gradient(135deg, #61dafb 60%, #52c5e8 100%);
+}
+.control-button.round.pause {
+  background: linear-gradient(135deg, #ffb347 60%, #ffcc80 100%);
+  color: #282c34;
+}
+.control-button.round:active {
+  transform: scale(0.95);
+}
+.control-button.round:disabled {
+  background: #4a525a;
+  color: #888;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.control-button .icon {
+  font-size: 1.4em;
+  line-height: 1;
+  display: block;
+  margin: 0 auto;
+}
+
+/* --- Стили для развернутого режима --- */
+.expanded-view {
+  width: auto;
+  height: 600px;
+  display: flex;
+  flex-direction: column;
+  padding: 0; /* Убираем padding, чтобы toolbar занимал всю ширину */
+  box-sizing: border-box;
+}
+
+.expanded-view .toolbar {
+  background-color: #3a3f4a;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: grab; /* Для перетаскивания за тулбар */
+  border-top-left-radius: 8px; /* Сохраняем скругление */
+  border-top-right-radius: 8px;
+}
+
+.expanded-view .toolbar span {
+  font-weight: bold;
+}
+
+.expanded-view .collapse-button {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 1.5em;
+  cursor: pointer;
+  padding: 0 5px;
+}
+.expanded-view .collapse-button:hover {
+  color: white;
+}
+
+
+.task-creation {
+  padding: 15px;
+  display: flex;
+  gap: 10px;
+  border-bottom: 1px solid #444953;
+}
+
+.task-creation input {
+  flex-grow: 1;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid #555a64;
+  background-color: #3a3f4a;
+  color: white;
+}
+
+.task-creation button {
+  padding: 8px 15px;
+  background-color: #61dafb;
+  color: #282c34;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.task-creation button:hover {
+  background-color: #52c5e8;
+}
+
+/* --- Стили для Kanban доски --- */
+.kanban-board {
+  display: flex;
+  
+  padding: 15px;
+  gap: 15px; /* Пространство между колонками */
+  overflow-x: hidden; /* Горизонтальная прокрутка, если колонки не помещаются */
+  /* Для корректной работы DragDropContext внутри flex-контейнера */
+  align-items: flex-start; /* The problematic line was here, fixed by removing invalid comment */
+}
+
+.kanban-column {
+  background-color: #3a3f4a;
+  min-width: 160px;
+  flex: 1 1 250px;
+  padding: 10px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
+}
+
+.kanban-column.solid-droppable-active {
+  outline: 2px dashed #61dafb;
+  background-color: #424853;
+}
+
+
+.task-card {
+  background-color: #282c34; /* Фон карточки задачи */
+  position: relative;
+  padding: 10px;
+  margin-bottom: 10px;
+  padding-right: 25px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  cursor: grab;
+  font-size: 0.9em;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+  word-wrap: break-word; /* Перенос длинных слов */
+}
+.task-card:hover {
+    background-color: #31353f;
+}
+/* Стили для кнопки удаления */
+.delete-task-button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 3px;
+  line-height: 1;
+  z-index: 10;
+  transition: color 0.2s ease;
+}
+
+.delete-task-button:hover {
+  color: #fff;
+}
+
+.task-card.active-task {
+    border-left: 3px solid #61dafb;
+    background-color: #3c414e;
+}
+
+.task-card .task-time {
+    font-size: 0.8em;
+    color: #888;
+    margin-top: 5px;
+    text-align: right;
+}
+
+/* Стиль для перетаскиваемого элемента (DragOverlay) */
+.task-card.dragging {
+  opacity: 0.8;
+  background-color: #61dafb;
+  color: #282c34;
+  transform: rotate(3deg); /* Небольшой наклон для визуального эффекта */
+  
+  /* --- НОВЫЕ СТИЛИ ДЛЯ ШИРИНЫ И ПЕРЕНОСА ТЕКСТА --- */
+  width: var(--solid-dnd-draggable-item-width); /* Устанавливаем ширину равной ширине исходного элемента */
+  max-width: 250px; /* Ограничиваем максимальную ширину (можно взять из .kanban-column flex-basis) */
+  word-wrap: break-word; /* Перенос длинных слов */
+  white-space: normal; /* Разрешаем нормальный перенос пробелов */
+  box-sizing: border-box; /* Учитываем padding в ширине */
+  /* Убедитесь, что padding здесь соответствует padding в .task-card */
+  padding: 10px 25px 10px 10px; 
+  /* --- КОНЕЦ НОВЫХ СТИЛЕЙ --- */
+}
+/* Стиль для элемента, который активно перетаскивается (оригинал) */
+.task-card.solid-draggable-active {
+  opacity: 0.3 !important; /* Делаем оригинал полупрозрачным */
+}
+
+.task-card:active {
+  cursor: grabbing;
+}
+
+.control-button.cyberpunk {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0ff 40%, #00f0ff44 100%);
+  box-shadow:
+    0 0 8px #0ff,
+    0 0 16px #0ff,
+    0 0 32px #0ff44,
+    0 0 2px #fff inset;
+  border: 2px solid #0ff;
+  color: #0ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.2s, background 0.2s, transform 0.1s;
+  position: relative;
+  margin-bottom: 0;
+  outline: none;
+  z-index: 1;
+  overflow: visible;
+}
+
+.control-button.cyberpunk.play {
+  background: linear-gradient(135deg, #0a1a1a 60%, #0ff 100%);
+  border-color: #0ff;
+}
+.control-button.cyberpunk.pause {
+  background: linear-gradient(135deg, #1a001a 60%, #ff00cc 100%);
+  border-color: #ff00cc;
+}
+.control-button.cyberpunk:active {
+  transform: scale(0.95);
+  box-shadow:
+    0 0 4px #0ff,
+    0 0 8px #0ff,
+    0 0 16px #0ff44,
+    0 0 1px #fff inset;
+}
+.control-button.cyberpunk:disabled {
+  background: #222;
+  color: #444;
+  border-color: #333;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.cyber-icon {
+  display: block;
+  margin: 0 auto;
+  filter: drop-shadow(0 0 2px #0ff);
+}
+.control-button.cyberpunk.pause .cyber-icon {
+  filter: drop-shadow(0 0 2px #ff00cc);
+}
+
+.control-button.cyberpunk.pause ~ .time-display {
+  color: #ff00cc;
+  text-shadow:
+    0 0 2px #ff00cc,
+    0 0 8px #ff00cc,
+    0 0 16px #ff00cc44;
+}
+
+.widget-hide-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: #ccc; /* Цвет иконки/текста, подберите под ваш дизайн */
+  font-size: 18px; /* Размер иконки/текста */
+  padding: 4px; /* Небольшой паддинг для компактности */
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s, color 0.2s;
+  line-height: 1; /* Для лучшего вертикального выравнивания текста/иконки */
+  z-index: 10; /* Чтобы кнопка была поверх других элементов виджета */
+}
+
+.widget-hide-button:hover {
+  background-color: rgba(255, 255, 255, 0.1); /* Легкая подсветка при наведении */
+  color: #fff; /* Цвет иконки/текста при наведении */
+}
+
+.widget-hide-button:active {
+  background-color: rgba(255, 255, 255, 0.2); /* Подсветка при нажатии */
+}
+
+.widget-controls-row {
+  display: flex;
+  align-items: center;
+}
